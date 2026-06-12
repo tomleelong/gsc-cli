@@ -1,0 +1,23 @@
+# Compiled binaries
+gsc-cli
+gsc-cli.exe
+*.exe
+*.test
+*.out
+
+# OS Metadata
+.DS_Store
+
+# IDEs and Editors
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Local credentials (precautionary)
+*credentials*.json
+*secret*.json
+token.json
