@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -91,8 +92,7 @@ func getOAuth2TokenSource(ctx context.Context, clientSecretFile string) (oauth2.
 		return nil, fmt.Errorf("unable to parse client secret: %w", err)
 	}
 
-	// We must register the redirect URI to use localhost
-	config.RedirectURL = "http://localhost:8080/oauth2callback"
+
 
 	// Try reading cached token
 	tokenFile, err := tokenCachePath()
@@ -124,12 +124,22 @@ func tokenFromWeb(ctx context.Context, config *oauth2.Config) (*oauth2.Token, er
 	codeChan := make(chan string)
 	errChan := make(chan error)
 
+	// 1. Find a free local TCP port on loopback interface
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, fmt.Errorf("failed to allocate local port for OAuth callback: %w", err)
+	}
+
+	port := listener.Addr().(*net.TCPAddr).Port
+
+	// 2. Dynamically set redirect URL to the allocated loopback port
+	config.RedirectURL = fmt.Sprintf("http://127.0.0.1:%d/oauth2callback", port)
+
 	// Create standard authentication URL
 	authURL := config.AuthCodeURL("state-token", oauth2.AccessTypeOffline, oauth2.ApprovalForce)
 
-	server := &http.Server{Addr: ":8080"}
-
-	http.HandleFunc("/oauth2callback", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/oauth2callback", func(w http.ResponseWriter, r *http.Request) {
 		code := r.URL.Query().Get("code")
 		if code == "" {
 			errChan <- fmt.Errorf("no authorization code found in callback")
@@ -140,14 +150,16 @@ func tokenFromWeb(ctx context.Context, config *oauth2.Config) (*oauth2.Token, er
 		fmt.Fprint(w, "Authentication successful! You can now close this tab and return to the CLI terminal.")
 	})
 
+	server := &http.Server{Handler: mux}
+
 	go func() {
-		if err := server.ListenAndServe(); err != http.ErrServerClosed {
+		if err := server.Serve(listener); err != http.ErrServerClosed {
 			errChan <- fmt.Errorf("failed to start local callback server: %w", err)
 		}
 	}()
 
 	fmt.Printf("\033[1;36m1. Please open the following URL in your browser to authorize this CLI:\033[0m\n\n%s\n\n", authURL)
-	fmt.Printf("\033[1;36m2. Waiting for login callback on http://localhost:8080/oauth2callback...\033[0m\n")
+	fmt.Printf("\033[1;36m2. Waiting for login callback on %s...\033[0m\n", config.RedirectURL)
 
 	// Set a timeout of 3 minutes for authorization
 	select {
