@@ -22,6 +22,8 @@ const (
 	TokenCacheDir = ".gsc-cli"
 	// TokenCacheFile is the file name for cached token
 	TokenCacheFile = "token.json"
+	// ClientSecretCacheFile is the file name for cached client secret
+	ClientSecretCacheFile = "client_secret.json"
 )
 
 // Services represents the Google Search Console clients
@@ -39,23 +41,40 @@ func GetServices(ctx context.Context, credsFile string, clientSecretFile string)
 		opts = append(opts, option.WithCredentialsFile(credsFile))
 	} else if envCreds := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"); envCreds != "" {
 		opts = append(opts, option.WithCredentialsFile(envCreds))
-	} else if clientSecretFile != "" {
-		// 2. Try OAuth2 flow with client secret JSON
-		tokenSource, err := getOAuth2TokenSource(ctx, clientSecretFile)
-		if err != nil {
-			return nil, fmt.Errorf("OAuth2 authentication failed: %w", err)
-		}
-		opts = append(opts, option.WithTokenSource(tokenSource))
 	} else {
-		// 3. Try Application Default Credentials (ADC) without explicit file
-		// This handles cases like gcloud auth application-default login
-		creds, err := google.FindDefaultCredentials(ctx, webmasters.WebmastersScope)
-		if err == nil {
-			opts = append(opts, option.WithCredentials(creds))
+		// 2. Try OAuth2 flow (explicitly passed or from cache)
+		secretFileToUse := clientSecretFile
+		if secretFileToUse == "" {
+			if cachedPath, err := cachedClientSecretPath(); err == nil {
+				if _, err := os.Stat(cachedPath); err == nil {
+					secretFileToUse = cachedPath
+				}
+			}
+		}
+
+		if secretFileToUse != "" {
+			// Cache the client secret if it was explicitly passed in and differs from the cached location
+			if clientSecretFile != "" {
+				if cachedPath, err := cachedClientSecretPath(); err == nil {
+					_ = cacheClientSecret(clientSecretFile, cachedPath)
+				}
+			}
+
+			tokenSource, err := getOAuth2TokenSource(ctx, secretFileToUse)
+			if err != nil {
+				return nil, fmt.Errorf("OAuth2 authentication failed: %w", err)
+			}
+			opts = append(opts, option.WithTokenSource(tokenSource))
 		} else {
-			return nil, fmt.Errorf("no credentials found. Please provide either:\n" +
-				"  - A Service Account key file via -c/--credentials flag or GOOGLE_APPLICATION_CREDENTIALS\n" +
-				"  - An OAuth2 Client Secret JSON file via -s/--client-secret flag")
+			// 3. Try Application Default Credentials (ADC) without explicit file
+			creds, err := google.FindDefaultCredentials(ctx, webmasters.WebmastersScope)
+			if err == nil {
+				opts = append(opts, option.WithCredentials(creds))
+			} else {
+				return nil, fmt.Errorf("no credentials found. Please provide either:\n" +
+					"  - A Service Account key file via -c/--credentials flag or GOOGLE_APPLICATION_CREDENTIALS\n" +
+					"  - An OAuth2 Client Secret JSON file via -s/--client-secret flag")
+			}
 		}
 	}
 
@@ -225,3 +244,30 @@ func saveToken(path string, token *oauth2.Token) error {
 	defer f.Close()
 	return json.NewEncoder(f).Encode(token)
 }
+
+// cachedClientSecretPath returns the path to the cached client secret JSON file.
+func cachedClientSecretPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("unable to determine user home directory: %w", err)
+	}
+	dir := filepath.Join(home, TokenCacheDir)
+	return filepath.Join(dir, ClientSecretCacheFile), nil
+}
+
+// cacheClientSecret saves a copy of the client secret JSON file to the cache directory.
+func cacheClientSecret(src, dst string) error {
+	if src == dst {
+		return nil
+	}
+	b, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	dir := filepath.Dir(dst)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	return os.WriteFile(dst, b, 0600)
+}
+
