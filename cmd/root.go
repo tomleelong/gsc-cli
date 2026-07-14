@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"gsc-cli/auth"
 	"github.com/spf13/cobra"
+	"gsc-cli/auth"
 )
 
 var (

@@ -55,75 +55,18 @@ Filter by search query, page URL, country, device, or search appearance, and gro
 		}
 
 		// Map dimensions
-		if len(queryDimensions) > 0 {
-			for _, d := range queryDimensions {
-				dim := strings.TrimSpace(d)
-				switch strings.ToLower(dim) {
-				case "query", "page", "country", "device", "date", "searchappearance", "search_appearance":
-					if strings.ToLower(dim) == "search_appearance" {
-						dim = "searchAppearance"
-					}
-					req.Dimensions = append(req.Dimensions, dim)
-				default:
-					return fmt.Errorf("unsupported dimension '%s'. Supported dimensions: query, page, country, device, date, searchAppearance", dim)
-				}
-			}
-		} else {
-			// Default dimension
-			req.Dimensions = []string{"query"}
+		dims, err := parseDimensions(queryDimensions)
+		if err != nil {
+			return err
 		}
+		req.Dimensions = dims
 
 		// Map filters
 		if len(queryFilters) > 0 {
-			var filters []*webmasters.ApiDimensionFilter
-
-			for _, f := range queryFilters {
-				parts := strings.SplitN(strings.TrimSpace(f), " ", 3)
-				if len(parts) < 3 {
-					return fmt.Errorf("invalid filter format '%s'. Must be: '<dimension> <operator> <expression>' (e.g. 'device == MOBILE' or 'query contains seo')", f)
-				}
-
-				dim := strings.ToLower(strings.TrimSpace(parts[0]))
-				op := strings.TrimSpace(parts[1])
-				expr := strings.Trim(strings.TrimSpace(parts[2]), "\"'")
-
-				// Format dimension name
-				switch dim {
-				case "query", "page", "country", "device", "searchappearance", "search_appearance":
-					if dim == "search_appearance" {
-						dim = "searchAppearance"
-					}
-				default:
-					return fmt.Errorf("unsupported filter dimension '%s' in '%s'. Supported: query, page, country, device, searchAppearance", dim, f)
-				}
-
-				// Map operator
-				var apiOp string
-				switch strings.ToLower(op) {
-				case "contains":
-					apiOp = "contains"
-				case "equals", "==":
-					apiOp = "equals"
-				case "notcontains", "not_contains":
-					apiOp = "notContains"
-				case "notequals", "not_equals", "!=":
-					apiOp = "notEquals"
-				case "includingregex", "regex", "~":
-					apiOp = "includingRegex"
-				case "excludingregex", "!~":
-					apiOp = "excludingRegex"
-				default:
-					return fmt.Errorf("unsupported filter operator '%s' in '%s'. Supported: contains, equals (==), notContains, notEquals (!=), includingRegex (~), excludingRegex (!~)", op, f)
-				}
-
-				filters = append(filters, &webmasters.ApiDimensionFilter{
-					Dimension:  dim,
-					Operator:   apiOp,
-					Expression: expr,
-				})
+			filters, err := parseFilters(queryFilters)
+			if err != nil {
+				return err
 			}
-
-			// Add filters to query request
 			req.DimensionFilterGroups = []*webmasters.ApiDimensionFilterGroup{
 				{
 					GroupType: "and",
@@ -227,11 +170,11 @@ Filter by search query, page URL, country, device, or search appearance, and gro
 
 		case "json":
 			type jsonRow struct {
-				Dimensions map[string]string `json:"dimensions"`
-				Clicks     float64           `json:"clicks"`
+				Dimensions  map[string]string `json:"dimensions"`
+				Clicks      float64           `json:"clicks"`
 				Impressions float64           `json:"impressions"`
-				Ctr        float64           `json:"ctr"`
-				Position   float64           `json:"position"`
+				Ctr         float64           `json:"ctr"`
+				Position    float64           `json:"position"`
 			}
 
 			outputRows := make([]jsonRow, len(resp.Rows))
@@ -278,4 +221,91 @@ func init() {
 	queryCmd.Flags().StringVarP(&queryFormat, "format", "f", "table", "Output format (table, csv, json)")
 
 	RootCmd.AddCommand(queryCmd)
+}
+
+func parseDimensions(dims []string) ([]string, error) {
+	if len(dims) == 0 {
+		return []string{"query"}, nil
+	}
+	var parsed []string
+	for _, d := range dims {
+		dim := strings.ToLower(strings.TrimSpace(d))
+		switch dim {
+		case "query", "page", "country", "device", "date", "searchappearance", "search_appearance":
+			if dim == "search_appearance" {
+				dim = "searchAppearance"
+			}
+			parsed = append(parsed, dim)
+		default:
+			return nil, fmt.Errorf("unsupported dimension '%s'. Supported dimensions: query, page, country, device, date, searchAppearance", d)
+		}
+	}
+	return parsed, nil
+}
+
+func parseFilters(filters []string) ([]*webmasters.ApiDimensionFilter, error) {
+	if len(filters) == 0 {
+		return nil, nil
+	}
+	var parsed []*webmasters.ApiDimensionFilter
+
+	for _, f := range filters {
+		str := strings.TrimSpace(f)
+
+		// Find the first space or tab to extract the dimension
+		idx1 := strings.IndexFunc(str, func(r rune) bool {
+			return r == ' ' || r == '\t'
+		})
+		if idx1 == -1 {
+			return nil, fmt.Errorf("invalid filter format '%s'. Must be: '<dimension> <operator> <expression>' (e.g. 'device == MOBILE' or 'query contains seo')", f)
+		}
+		dim := strings.ToLower(str[:idx1])
+
+		// Find the start of the operator and expression
+		rest := strings.TrimSpace(str[idx1:])
+		idx2 := strings.IndexFunc(rest, func(r rune) bool {
+			return r == ' ' || r == '\t'
+		})
+		if idx2 == -1 {
+			return nil, fmt.Errorf("invalid filter format '%s'. Must be: '<dimension> <operator> <expression>' (e.g. 'device == MOBILE' or 'query contains seo')", f)
+		}
+		op := rest[:idx2]
+		expr := strings.Trim(strings.TrimSpace(rest[idx2:]), "\"'")
+
+		// Format dimension name
+		switch dim {
+		case "query", "page", "country", "device", "searchappearance", "search_appearance":
+			if dim == "search_appearance" {
+				dim = "searchAppearance"
+			}
+		default:
+			return nil, fmt.Errorf("unsupported filter dimension '%s' in '%s'. Supported: query, page, country, device, searchAppearance", dim, f)
+		}
+
+		// Map operator
+		var apiOp string
+		switch strings.ToLower(op) {
+		case "contains":
+			apiOp = "contains"
+		case "equals", "==":
+			apiOp = "equals"
+		case "notcontains", "not_contains":
+			apiOp = "notContains"
+		case "notequals", "not_equals", "!=":
+			apiOp = "notEquals"
+		case "includingregex", "regex", "~":
+			apiOp = "includingRegex"
+		case "excludingregex", "!~":
+			apiOp = "excludingRegex"
+		default:
+			return nil, fmt.Errorf("unsupported filter operator '%s' in '%s'. Supported: contains, equals (==), notContains, notEquals (!=), includingRegex (~), excludingRegex (!~)", op, f)
+		}
+
+		parsed = append(parsed, &webmasters.ApiDimensionFilter{
+			Dimension:  dim,
+			Operator:   apiOp,
+			Expression: expr,
+		})
+	}
+	return parsed, nil
 }

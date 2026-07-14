@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	inspectFormat  string
+	inspectFormat string
 )
 
 var inspectCmd = &cobra.Command{

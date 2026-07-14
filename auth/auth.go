@@ -111,8 +111,6 @@ func getOAuth2TokenSource(ctx context.Context, clientSecretFile string) (oauth2.
 		return nil, fmt.Errorf("unable to parse client secret: %w", err)
 	}
 
-
-
 	// Try reading cached token
 	tokenFile, err := tokenCachePath()
 	if err != nil {
@@ -270,4 +268,3 @@ func cacheClientSecret(src, dst string) error {
 	}
 	return os.WriteFile(dst, b, 0600)
 }
-
