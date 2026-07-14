@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -10,7 +11,8 @@ import (
 )
 
 var (
-	inspectFormat string
+	inspectFormat    string
+	inspectInputFile string
 )
 
 var inspectCmd = &cobra.Command{
@@ -18,47 +20,90 @@ var inspectCmd = &cobra.Command{
 	Short: "Inspect the index status of a specific URL",
 	Long: `Retrieve indexing details, crawl information, canonical URLs, and usability findings
 for a specific URL from the Google index using the Search Console URL Inspection API.`,
-	Args: cobra.ExactArgs(1),
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if inspectInputFile == "" && len(args) == 0 {
+			return fmt.Errorf("accepts 1 arg(s), received 0. Either specify a URL positional argument or use the --file/-i flag for batch inspection")
+		}
+		if inspectInputFile != "" && len(args) > 0 {
+			return fmt.Errorf("cannot specify both a positional URL argument and the --file/-i flag")
+		}
+
 		ctx := cmd.Context()
 		svc, err := getServices(ctx)
 		if err != nil {
 			return err
 		}
 
-		inspectURL := args[0]
-
-		if inspectFormat == "table" {
-			PrintInfo(fmt.Sprintf("Inspecting URL '%s' in property '%s'...", inspectURL, siteURL))
-		}
-
-		req := &searchconsole.InspectUrlIndexRequest{
-			InspectionUrl: inspectURL,
-			SiteUrl:       siteURL,
-		}
-
-		resp, err := svc.SearchConsole.UrlInspection.Index.Inspect(req).Context(ctx).Do()
-		if err != nil {
-			return fmt.Errorf("URL inspection failed: %w", err)
-		}
-
-		if resp.InspectionResult == nil {
-			return fmt.Errorf("no inspection result returned from Google Search Console")
-		}
-
-		res := resp.InspectionResult
-
-		switch strings.ToLower(inspectFormat) {
-		case "table":
-			printInspectionReport(inspectURL, siteURL, res)
-		case "json":
-			jsonData, err := json.MarshalIndent(res, "", "  ")
+		var urls []string
+		if inspectInputFile != "" {
+			data, err := os.ReadFile(inspectInputFile)
 			if err != nil {
-				return fmt.Errorf("failed to marshal JSON: %w", err)
+				return fmt.Errorf("failed to read input file: %w", err)
 			}
-			fmt.Println(string(jsonData))
-		default:
-			return fmt.Errorf("unsupported format '%s'. Supported: table, json", inspectFormat)
+			lines := strings.Split(string(data), "\n")
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
+					continue
+				}
+				urls = append(urls, line)
+			}
+			if len(urls) == 0 {
+				return fmt.Errorf("no valid URLs found in input file '%s'", inspectInputFile)
+			}
+		} else {
+			urls = []string{args[0]}
+		}
+
+		var hasErrors bool
+		for _, url := range urls {
+			if inspectFormat == "table" {
+				PrintInfo(fmt.Sprintf("Inspecting URL '%s' in property '%s'...", url, siteURL))
+			}
+
+			req := &searchconsole.InspectUrlIndexRequest{
+				InspectionUrl: url,
+				SiteUrl:       siteURL,
+			}
+
+			resp, err := svc.SearchConsole.UrlInspection.Index.Inspect(req).Context(ctx).Do()
+			if err != nil {
+				PrintError(fmt.Sprintf("URL inspection failed for %s: %v", url, err))
+				hasErrors = true
+				continue
+			}
+
+			if resp.InspectionResult == nil {
+				PrintError(fmt.Sprintf("No inspection result returned from Google Search Console for %s", url))
+				hasErrors = true
+				continue
+			}
+
+			res := resp.InspectionResult
+
+			switch strings.ToLower(inspectFormat) {
+			case "table":
+				printInspectionReport(url, siteURL, res)
+			case "json":
+				jsonData, err := json.MarshalIndent(res, "", "  ")
+				if err != nil {
+					PrintError(fmt.Sprintf("Failed to marshal JSON for %s: %v", url, err))
+					hasErrors = true
+					continue
+				}
+				fmt.Println(string(jsonData))
+			default:
+				return fmt.Errorf("unsupported format '%s'. Supported: table, json", inspectFormat)
+			}
+		}
+
+		if inspectInputFile != "" {
+			if hasErrors {
+				PrintWarning("Batch URL inspection completed with some errors.")
+			} else {
+				PrintSuccess("Batch URL inspection completed successfully.")
+			}
 		}
 
 		return nil
@@ -199,6 +244,7 @@ func init() {
 	_ = inspectCmd.MarkFlagRequired("site")
 
 	inspectCmd.Flags().StringVarP(&inspectFormat, "format", "f", "table", "Output format (table, json)")
+	inspectCmd.Flags().StringVarP(&inspectInputFile, "file", "i", "", "Path to a text file containing one URL per line for batch inspection")
 
 	RootCmd.AddCommand(inspectCmd)
 }

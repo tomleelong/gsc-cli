@@ -19,6 +19,7 @@ var (
 	queryFilters    []string
 	queryRowLimit   int64
 	queryFormat     string
+	queryOutputFile string
 )
 
 var queryCmd = &cobra.Command{
@@ -90,10 +91,39 @@ Filter by search query, page URL, country, device, or search appearance, and gro
 		}
 
 		if len(resp.Rows) == 0 {
-			if queryFormat == "table" {
-				PrintWarning("No search performance data found matching your query criteria.")
-			} else if queryFormat == "json" {
-				_, _ = fmt.Fprint(os.Stdout, "[]\n")
+			if queryOutputFile != "" {
+				if strings.ToLower(queryFormat) == "json" {
+					if err := os.WriteFile(queryOutputFile, []byte("[]\n"), 0644); err != nil {
+						return fmt.Errorf("failed to write empty json to output file: %w", err)
+					}
+					PrintSuccess(fmt.Sprintf("Successfully wrote empty JSON output to %s", queryOutputFile))
+				} else if strings.ToLower(queryFormat) == "csv" {
+					f, err := os.Create(queryOutputFile)
+					if err != nil {
+						return fmt.Errorf("failed to create output file: %w", err)
+					}
+					defer f.Close()
+					writer := csv.NewWriter(f)
+					headers := []string{}
+					for _, d := range req.Dimensions {
+						headers = append(headers, d)
+					}
+					headers = append(headers, "clicks", "impressions", "ctr", "position")
+					_ = writer.Write(headers)
+					writer.Flush()
+					PrintSuccess(fmt.Sprintf("Successfully wrote CSV headers to %s", queryOutputFile))
+				} else { // table
+					if err := os.WriteFile(queryOutputFile, []byte("No search performance data found matching your query criteria.\n"), 0644); err != nil {
+						return fmt.Errorf("failed to write empty table to output file: %w", err)
+					}
+					PrintSuccess(fmt.Sprintf("Successfully wrote empty results info to %s", queryOutputFile))
+				}
+			} else {
+				if queryFormat == "table" {
+					PrintWarning("No search performance data found matching your query criteria.")
+				} else if queryFormat == "json" {
+					_, _ = fmt.Fprint(os.Stdout, "[]\n")
+				}
 			}
 			return nil
 		}
@@ -129,12 +159,38 @@ Filter by search query, page URL, country, device, or search appearance, and gro
 				rows = append(rows, rowCells)
 			}
 
-			fmt.Println()
-			RenderTable(headers, rows)
-			PrintSuccess(fmt.Sprintf("Retrieved %d rows.", len(resp.Rows)))
+			var tableBuf strings.Builder
+			RenderTableToWriter(&tableBuf, headers, rows)
+			tableStr := tableBuf.String()
+
+			if queryOutputFile != "" {
+				// Strip ANSI codes
+				cleanTable := ansiRegexp.ReplaceAllString(tableStr, "")
+				err := os.WriteFile(queryOutputFile, []byte(cleanTable), 0644)
+				if err != nil {
+					return fmt.Errorf("failed to write table to output file: %w", err)
+				}
+				PrintSuccess(fmt.Sprintf("Successfully wrote table output to %s", queryOutputFile))
+			} else {
+				fmt.Println()
+				fmt.Print(tableStr)
+				PrintSuccess(fmt.Sprintf("Retrieved %d rows.", len(resp.Rows)))
+			}
 
 		case "csv":
-			writer := csv.NewWriter(os.Stdout)
+			var writer *csv.Writer
+			var f *os.File
+			if queryOutputFile != "" {
+				var err error
+				f, err = os.Create(queryOutputFile)
+				if err != nil {
+					return fmt.Errorf("failed to create output file: %w", err)
+				}
+				defer f.Close()
+				writer = csv.NewWriter(f)
+			} else {
+				writer = csv.NewWriter(os.Stdout)
+			}
 			defer writer.Flush()
 
 			// Headers
@@ -166,6 +222,10 @@ Filter by search query, page URL, country, device, or search appearance, and gro
 				if err := writer.Write(rowCells); err != nil {
 					return err
 				}
+			}
+
+			if queryOutputFile != "" {
+				PrintSuccess(fmt.Sprintf("Successfully wrote CSV output to %s", queryOutputFile))
 			}
 
 		case "json":
@@ -200,7 +260,16 @@ Filter by search query, page URL, country, device, or search appearance, and gro
 			if err != nil {
 				return fmt.Errorf("failed to marshal JSON: %w", err)
 			}
-			fmt.Println(string(jsonData))
+
+			if queryOutputFile != "" {
+				err = os.WriteFile(queryOutputFile, jsonData, 0644)
+				if err != nil {
+					return fmt.Errorf("failed to write JSON to output file: %w", err)
+				}
+				PrintSuccess(fmt.Sprintf("Successfully wrote JSON output to %s", queryOutputFile))
+			} else {
+				fmt.Println(string(jsonData))
+			}
 
 		default:
 			return fmt.Errorf("unsupported output format '%s'. Supported: table, csv, json", queryFormat)
@@ -219,6 +288,7 @@ func init() {
 	queryCmd.Flags().StringSliceVar(&queryFilters, "filter", []string{}, "Filter results by '<dimension> <operator> <value>' (can be specified multiple times). Operators: contains, equals (==), notContains, notEquals (!=), includingRegex (~), excludingRegex (!~)")
 	queryCmd.Flags().Int64Var(&queryRowLimit, "limit", 100, "Maximum number of rows to retrieve")
 	queryCmd.Flags().StringVarP(&queryFormat, "format", "f", "table", "Output format (table, csv, json)")
+	queryCmd.Flags().StringVarP(&queryOutputFile, "output-file", "o", "", "Path to local file where query results will be saved")
 
 	RootCmd.AddCommand(queryCmd)
 }
