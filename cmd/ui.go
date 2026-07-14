@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"regexp"
 	"strings"
 )
@@ -90,6 +92,11 @@ func PrintBanner() {
 
 // RenderTable displays data in a beautifully aligned, minimalist table format.
 func RenderTable(headers []string, rows [][]string) {
+	RenderTableToWriter(os.Stdout, headers, rows)
+}
+
+// RenderTableToWriter renders the table to a specified io.Writer.
+func RenderTableToWriter(w io.Writer, headers []string, rows [][]string) {
 	if len(headers) == 0 {
 		return
 	}
@@ -133,8 +140,8 @@ func RenderTable(headers []string, rows [][]string) {
 			separatorLine.WriteString("   ")
 		}
 	}
-	fmt.Println(headerLine.String())
-	fmt.Println(Gray(separatorLine.String()))
+	fmt.Fprintln(w, headerLine.String())
+	fmt.Fprintln(w, Gray(separatorLine.String()))
 
 	// Print rows
 	for _, row := range rows {
@@ -154,7 +161,7 @@ func RenderTable(headers []string, rows [][]string) {
 				rowLine.WriteString("   ")
 			}
 		}
-		fmt.Println(rowLine.String())
+		fmt.Fprintln(w, rowLine.String())
 	}
-	fmt.Println()
+	fmt.Fprintln(w)
 }
