@@ -1,4 +1,4 @@
-module gsc-cli
+module github.com/tomleelong/gsc-cli
 
 go 1.26.4
 

@@ -13,6 +13,28 @@ A lightweight, premium command-line tool for [Google Search Console](https://sea
 
 Requires [Go](https://go.dev/dl/) 1.26 or later.
 
+Install directly with Go:
+
+```bash
+go install github.com/tomleelong/gsc-cli@latest
+```
+
+This places a `gsc-cli` binary in `$(go env GOPATH)/bin`. Make sure that directory is on your `PATH`:
+
+```bash
+export PATH="$PATH:$(go env GOPATH)/bin"
+```
+
+> This repo is currently private, so `go install` only works for accounts with access to it. Go's default module proxy can't fetch private repos, so also set `GOPRIVATE` and make sure `git` can authenticate to GitHub (e.g. via SSH key or a credential helper):
+>
+> ```bash
+> export GOPRIVATE=github.com/tomleelong/gsc-cli
+> ```
+>
+> Once the repo is made public, `go install` works with no extra setup.
+
+Alternatively, build from a clone of the repository:
+
 ```bash
 git clone https://github.com/tomleelong/gsc-cli.git
 cd gsc-cli
