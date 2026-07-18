@@ -25,14 +25,6 @@ This places a `gsc-cli` binary in `$(go env GOPATH)/bin`. Make sure that directo
 export PATH="$PATH:$(go env GOPATH)/bin"
 ```
 
-> This repo is currently private, so `go install` only works for accounts with access to it. Go's default module proxy can't fetch private repos, so also set `GOPRIVATE` and make sure `git` can authenticate to GitHub (e.g. via SSH key or a credential helper):
->
-> ```bash
-> export GOPRIVATE=github.com/tomleelong/gsc-cli
-> ```
->
-> Once the repo is made public, `go install` works with no extra setup.
-
 Alternatively, build from a clone of the repository:
 
 ```bash
