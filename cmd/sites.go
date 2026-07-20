@@ -91,6 +91,8 @@ var sitesAddCmd = &cobra.Command{
 	},
 }
 
+var sitesDeleteForce bool
+
 var sitesDeleteCmd = &cobra.Command{
 	Use:   "delete [site-url]",
 	Short: "Delete an existing site from Google Search Console",
@@ -103,6 +105,19 @@ var sitesDeleteCmd = &cobra.Command{
 		}
 
 		siteURL := args[0]
+
+		confirmed, err := ConfirmDestructiveAction(
+			fmt.Sprintf("You are about to delete the site '%s' from Google Search Console.", siteURL),
+			sitesDeleteForce,
+		)
+		if err != nil {
+			return err
+		}
+		if !confirmed {
+			PrintWarning("Deletion cancelled.")
+			return nil
+		}
+
 		PrintInfo(fmt.Sprintf("Deleting site '%s' from Google Search Console...", siteURL))
 
 		// Delete site
@@ -117,6 +132,8 @@ var sitesDeleteCmd = &cobra.Command{
 }
 
 func init() {
+	sitesDeleteCmd.Flags().BoolVarP(&sitesDeleteForce, "force", "y", false, "Force delete without confirmation prompt")
+
 	sitesCmd.AddCommand(sitesListCmd)
 	sitesCmd.AddCommand(sitesAddCmd)
 	sitesCmd.AddCommand(sitesDeleteCmd)

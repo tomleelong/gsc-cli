@@ -123,6 +123,8 @@ var sitemapsAddCmd = &cobra.Command{
 	},
 }
 
+var sitemapsDeleteForce bool
+
 var sitemapsDeleteCmd = &cobra.Command{
 	Use:   "delete [sitemap-url]",
 	Short: "Delete a submitted sitemap from a property",
@@ -135,6 +137,19 @@ var sitemapsDeleteCmd = &cobra.Command{
 		}
 
 		sitemapURL := args[0]
+
+		confirmed, err := ConfirmDestructiveAction(
+			fmt.Sprintf("You are about to delete sitemap '%s' from property '%s'.", sitemapURL, siteURL),
+			sitemapsDeleteForce,
+		)
+		if err != nil {
+			return err
+		}
+		if !confirmed {
+			PrintWarning("Deletion cancelled.")
+			return nil
+		}
+
 		PrintInfo(fmt.Sprintf("Deleting sitemap '%s' from property '%s'...", sitemapURL, siteURL))
 
 		err = svc.Webmasters.Sitemaps.Delete(siteURL, sitemapURL).Do()
@@ -149,6 +164,8 @@ var sitemapsDeleteCmd = &cobra.Command{
 
 func init() {
 	_ = sitemapsCmd.MarkPersistentFlagRequired("site")
+
+	sitemapsDeleteCmd.Flags().BoolVarP(&sitemapsDeleteForce, "force", "y", false, "Force delete without confirmation prompt")
 
 	sitemapsCmd.AddCommand(sitemapsListCmd)
 	sitemapsCmd.AddCommand(sitemapsAddCmd)

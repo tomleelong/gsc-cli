@@ -52,12 +52,28 @@ To create an OAuth2 client secret: in [Google Cloud Console](https://console.clo
 
 Every command that operates on a specific property requires `-u/--site` with the property's verified URL as it appears in Search Console (e.g. `sc-domain:example.com` or `https://example.com/`).
 
+### Safety & Non-Interactive Environments (AI Agent Compatibility)
+
+Destructive commands (`sites delete` and `sitemaps delete`) protect against accidental data loss by prompting for confirmation in interactive terminals.
+
+When run in a **non-interactive/headless environment** (such as CI/CD pipelines, cron jobs, or by autonomous **AI agents**), the command will safely fail unless the `--force` (shorthand `-y`) flag is supplied:
+
+```bash
+# Safe bypass:
+gsc-cli sites delete sc-domain:example.com --force
+```
+
 ### Sites
 
 ```bash
 gsc-cli sites list
 gsc-cli sites add sc-domain:example.com
+
+# Prompts for confirmation in interactive mode
 gsc-cli sites delete sc-domain:example.com
+
+# Force delete without confirmation (ideal for AI agents and scripts)
+gsc-cli sites delete sc-domain:example.com --force
 ```
 
 ### Sitemaps
@@ -65,7 +81,12 @@ gsc-cli sites delete sc-domain:example.com
 ```bash
 gsc-cli sitemaps list -u sc-domain:example.com
 gsc-cli sitemaps add https://example.com/sitemap.xml -u sc-domain:example.com
+
+# Prompts for confirmation in interactive mode
 gsc-cli sitemaps delete https://example.com/sitemap.xml -u sc-domain:example.com
+
+# Force delete without confirmation (ideal for AI agents and scripts)
+gsc-cli sitemaps delete https://example.com/sitemap.xml -u sc-domain:example.com --force
 ```
 
 ### Query

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -165,3 +166,37 @@ func RenderTableToWriter(w io.Writer, headers []string, rows [][]string) {
 	}
 	fmt.Fprintln(w)
 }
+
+// ConfirmDestructiveAction asks the user for confirmation if they want to perform a destructive operation.
+// It returns true if confirmed, false otherwise.
+// If force is true, it skips the check entirely and returns true.
+// If the environment is not interactive (non-TTY) and force is false, it returns an error.
+func ConfirmDestructiveAction(promptMsg string, force bool) (bool, error) {
+	if force {
+		return true, nil
+	}
+
+	// Check if non-interactive (non-TTY)
+	fileInfo, err := os.Stdin.Stat()
+	if err != nil || (fileInfo.Mode()&os.ModeCharDevice) == 0 {
+		return false, fmt.Errorf("destructive action requires the '--force' or '-y' flag in non-interactive/headless environments")
+	}
+
+	// Print warning with style
+	PrintWarning(promptMsg)
+	fmt.Printf("%s Are you sure you want to proceed? (%s) [y/N]: ", BoldYellow("?"), Bold("yes/no"))
+
+	reader := bufio.NewReader(os.Stdin)
+	response, err := reader.ReadString('\n')
+	if err != nil {
+		return false, err
+	}
+
+	response = strings.ToLower(strings.TrimSpace(response))
+	if response == "y" || response == "yes" {
+		return true, nil
+	}
+
+	return false, nil
+}
+
