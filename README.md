@@ -16,7 +16,7 @@ Requires [Go](https://go.dev/dl/) 1.26 or later.
 Install directly with Go:
 
 ```bash
-go install github.com/tomleelong/gsc-cli@latest
+go install github.com/bertramdev/gsc-cli@latest
 ```
 
 This places a `gsc-cli` binary in `$(go env GOPATH)/bin`. Make sure that directory is on your `PATH`:
@@ -28,7 +28,7 @@ export PATH="$PATH:$(go env GOPATH)/bin"
 Alternatively, build from a clone of the repository:
 
 ```bash
-git clone https://github.com/tomleelong/gsc-cli.git
+git clone https://github.com/bertramdev/gsc-cli.git
 cd gsc-cli
 go build -o gsc-cli .
 ```
