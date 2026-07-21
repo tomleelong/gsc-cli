@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/tomleelong/gsc-cli/auth"
+	"github.com/bertramdev/gsc-cli/auth"
 )
 
 var (

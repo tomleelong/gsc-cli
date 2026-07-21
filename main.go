@@ -1,6 +1,6 @@
 package main
 
-import "github.com/tomleelong/gsc-cli/cmd"
+import "github.com/bertramdev/gsc-cli/cmd"
 
 func main() {
 	cmd.Execute()
